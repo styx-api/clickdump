@@ -235,3 +235,65 @@ class TestEdgeCases:
         parsed = json.loads(json_str)
         assert parsed["prog"] == "cli"
         assert len(parsed["actions"]) > 0
+
+
+class TestProgramName:
+    def test_parent_sets_prog(self, simple_group):
+        build = simple_group.commands["build"]
+        result = clickdump.dump(build, parent=simple_group)
+        assert result["prog"] == "cli build"
+
+    def test_prog_override(self, simple_group):
+        build = simple_group.commands["build"]
+        result = clickdump.dump(build, prog="custom")
+        assert result["prog"] == "custom"
+
+    def test_prog_overrides_parent(self, simple_group):
+        build = simple_group.commands["build"]
+        result = clickdump.dump(build, parent=simple_group, prog="mycli")
+        assert result["prog"] == "mycli build"
+
+    def test_no_parent_uses_cmd_name(self, simple_command):
+        result = clickdump.dump(simple_command)
+        assert result["prog"] == "cli"
+
+    def test_nested_parent_crawls(self, nested_group):
+        config = nested_group.commands["config"]
+        get = config.commands.get("get")
+        result = clickdump.dump(get, parent=nested_group)
+        assert result["prog"] == "cli config get"
+
+    def test_nested_immediate_parent(self, nested_group):
+        config = nested_group.commands["config"]
+        get = config.commands.get("get")
+        result = clickdump.dump(get, parent=config)
+        assert result["prog"] == "config get"
+
+    def test_prog_overrides_root_only(self, nested_group):
+        config = nested_group.commands["config"]
+        get = config.commands.get("get")
+        result = clickdump.dump(get, parent=nested_group, prog="mycli")
+        assert result["prog"] == "mycli config get"
+
+    def test_cmd_not_found_falls_back(self, nested_group):
+        config = nested_group.commands["config"]
+
+        @click.command()
+        def standalone():
+            pass
+
+        # standalone is not under config, so parent lookup fails -> falls back to prog
+        result = clickdump.dump(standalone, parent=config, prog="fallback")
+        assert result["prog"] == "fallback"
+
+    def test_prog_overrides_root_when_parent_found(self, nested_group):
+        config = nested_group.commands["config"]
+        get = config.commands.get("get")
+        result = clickdump.dump(get, parent=config, prog="x")
+        assert result["prog"] == "x get"
+
+    def test_dumps_respects_parent(self, simple_group):
+        build = simple_group.commands["build"]
+        json_str = clickdump.dumps(build, parent=simple_group)
+        parsed = __import__("json").loads(json_str)
+        assert parsed["prog"] == "cli build"
