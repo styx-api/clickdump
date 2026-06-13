@@ -6,7 +6,7 @@ import json
 import platform
 from dataclasses import MISSING, fields, is_dataclass
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import click
 
@@ -176,10 +176,12 @@ def _extract_command_actions(cmd: click.Command, include_hidden: bool = True) ->
     return actions, [], []
 
 
-def _create_parser_info(cmd: click.Command) -> ParserInfo:
+def _create_parser_info(
+    cmd: click.Command, *, prog_override: Optional[str] = None
+) -> ParserInfo:
     """Create base ParserInfo from a Click Command."""
     info = ParserInfo(
-        prog=cmd.name,
+        prog=prog_override or cmd.name,
         description=cmd.help,
         epilog=getattr(cmd, "epilog", None),
         add_help=getattr(cmd, "add_help_option", True),
@@ -206,21 +208,31 @@ def _create_parser_info(cmd: click.Command) -> ParserInfo:
     return info
 
 
-def serialize_command(cmd: click.Command, include_hidden: bool = True) -> ParserInfo:
+def serialize_command(
+    cmd: click.Command,
+    include_hidden: bool = True,
+    *,
+    prog_override: Optional[str] = None,
+) -> ParserInfo:
     """Serialize a click Command to ParserInfo."""
-    info = _create_parser_info(cmd)
+    info = _create_parser_info(cmd, prog_override=prog_override)
     actions, _, _ = _extract_command_actions(cmd, include_hidden=include_hidden)
     info.actions = actions
     return info
 
 
-def serialize_group(group: click.Group, include_hidden: bool = True) -> ParserInfo:
+def serialize_group(
+    group: click.Group,
+    include_hidden: bool = True,
+    *,
+    prog_override: Optional[str] = None,
+) -> ParserInfo:
     """Serialize a click Group to ParserInfo.
 
     The group's own params are serialized as regular actions.
     Subcommands are serialized as a synthetic PARSERS action.
     """
-    info = _create_parser_info(group)
+    info = _create_parser_info(group, prog_override=prog_override)
     actions, _, _ = _extract_command_actions(group, include_hidden=include_hidden)
 
     if group.commands:
@@ -316,12 +328,21 @@ def _extract_help_option_names(cmd: click.Command) -> None:
         pass
 
 
-def _serialize(cmd: click.Command, include_hidden: bool = True) -> ParserInfo:
+def _serialize(
+    cmd: click.Command,
+    include_hidden: bool = True,
+    *,
+    prog_override: Optional[str] = None,
+) -> ParserInfo:
     """Serialize any click Command or Group."""
     _extract_help_option_names(cmd)
     if isinstance(cmd, click.Group):
-        return serialize_group(cmd, include_hidden=include_hidden)
-    return serialize_command(cmd, include_hidden=include_hidden)
+        return serialize_group(
+            cmd, include_hidden=include_hidden, prog_override=prog_override
+        )
+    return serialize_command(
+        cmd, include_hidden=include_hidden, prog_override=prog_override
+    )
 
 
 def _asdict_omit_defaults(obj: Any) -> Any:
@@ -347,16 +368,20 @@ def _asdict_omit_defaults(obj: Any) -> Any:
             value = _asdict_omit_defaults(value)
         elif isinstance(value, list):
             value = [
-                _asdict_omit_defaults(v)
-                if is_dataclass(v) and not isinstance(v, type)
-                else v
+                (
+                    _asdict_omit_defaults(v)
+                    if is_dataclass(v) and not isinstance(v, type)
+                    else v
+                )
                 for v in value
             ]
         elif isinstance(value, dict):
             value = {
-                k: _asdict_omit_defaults(v)
-                if is_dataclass(v) and not isinstance(v, type)
-                else v
+                k: (
+                    _asdict_omit_defaults(v)
+                    if is_dataclass(v) and not isinstance(v, type)
+                    else v
+                )
                 for k, v in value.items()
             }
 
@@ -376,8 +401,38 @@ class _Encoder(json.JSONEncoder):
         return super().default(o)
 
 
+def _find_command_path(
+    root: click.Command, target: click.Command
+) -> Optional[List[str]]:
+    """Search root's command tree for target, returning the full name path.
+
+    Returns list of names from root to target (e.g. ["cli", "config", "get"]),
+    or None if target is not found under root.
+    """
+    stack: List[tuple] = [(root, [getattr(root, "name", "")])]
+
+    while stack:
+        node, path = stack.pop()
+
+        if node is target:
+            return path
+
+        commands = getattr(node, "commands", {})
+        for name, cmd in commands.items():
+            if cmd.name is None:
+                continue
+            stack.append((cmd, [*path, cmd.name]))
+
+    return None
+
+
 def dump(
-    cmd: click.Command, *, include_env: bool = True, include_hidden: bool = True
+    cmd: click.Command,
+    *,
+    include_env: bool = True,
+    include_hidden: bool = True,
+    parent: Optional[click.Command] = None,
+    prog: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Serialize a click Command or Group to a dictionary.
 
@@ -385,11 +440,22 @@ def dump(
         cmd: The click Command or Group to serialize.
         include_env: Whether to include environment metadata.
         include_hidden: Whether to include hidden options (default True).
+        parent: Parent group. The command tree under parent is crawled
+               to find cmd and compute the full program name.
+               E.g. passing parent=cli for nested subcommand "get"
+               yields prog="cli config get".
+        prog: Overrides the root (first) name in the computed program path.
 
     Returns:
         Dictionary representation compatible with argdump's schema.
     """
-    info = _serialize(cmd, include_hidden=include_hidden)
+    if parent is not None:
+        path = _find_command_path(parent, cmd)
+        if path is not None:
+            if prog is not None:
+                path[0] = prog
+            prog = " ".join(path)
+    info = _serialize(cmd, include_hidden=include_hidden, prog_override=prog)
     data: Dict[str, Any] = json.loads(json.dumps(info, cls=_Encoder))
 
     result: Dict[str, Any] = {"$schema": SCHEMA_URL_V1}
@@ -406,6 +472,8 @@ def dumps(
     *,
     include_env: bool = True,
     include_hidden: bool = True,
+    parent: Optional[click.Command] = None,
+    prog: Optional[str] = None,
     **json_kwargs: Any,
 ) -> str:
     """Serialize a click Command or Group to a JSON string.
@@ -414,11 +482,20 @@ def dumps(
         cmd: The click Command or Group to serialize.
         include_env: Whether to include environment metadata.
         include_hidden: Whether to include hidden options (default True).
+        parent: Parent group for computing the full program name.
+        prog: Overrides the root (first) name in the computed program path.
         **json_kwargs: Additional arguments passed to json.dumps (e.g. indent).
 
     Returns:
         JSON string representation.
     """
     return json.dumps(
-        dump(cmd, include_env=include_env, include_hidden=include_hidden), **json_kwargs
+        dump(
+            cmd,
+            include_env=include_env,
+            include_hidden=include_hidden,
+            parent=parent,
+            prog=prog,
+        ),
+        **json_kwargs,
     )
