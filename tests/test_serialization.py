@@ -127,17 +127,24 @@ class TestEnvvar:
 
 
 class TestHidden:
-    def test_hidden_option(self, command_with_hidden):
-        result = clickdump.dump(command_with_hidden)
+    def test_hidden_option_is_omitted(self, command_with_hidden):
+        result = clickdump.dump(command_with_hidden, include_hidden=False)
         actions = result["actions"]
-        hidden = [a for a in actions if a["dest"] == "hidden"][0]
-        assert hidden["hidden"] is True
+        hidden = [a for a in actions if a["dest"] == "hidden"]
+        assert len(hidden) == 0
 
-    def test_visible_option(self, command_with_hidden):
+    def test_hidden_option_included_by_default(self, command_with_hidden):
         result = clickdump.dump(command_with_hidden)
         actions = result["actions"]
-        visible = [a for a in actions if a["dest"] == "visible"][0]
-        assert visible.get("hidden", False) is False
+        hidden = [a for a in actions if a["dest"] == "hidden"]
+        assert len(hidden) == 1
+
+    def test_visible_option_included(self, command_with_hidden):
+        result = clickdump.dump(command_with_hidden)
+        actions = result["actions"]
+        visible = [a for a in actions if a["dest"] == "visible"]
+        assert len(visible) == 1
+        assert visible[0]["action_type"] == "store"
 
 
 class TestGroup:

@@ -145,8 +145,12 @@ def _create_help_action(cmd: click.Command) -> Optional[ActionInfo]:
     )
 
 
-def _extract_command_actions(cmd: click.Command) -> tuple:
+def _extract_command_actions(cmd: click.Command, include_hidden: bool = True) -> tuple:
     """Extract actions from a click Command.
+
+    Args:
+        cmd: The click Command to extract actions from.
+        include_hidden: Whether to include hidden options.
 
     Returns:
         Tuple of (actions_list, argument_groups_list, mutex_groups_list)
@@ -162,6 +166,8 @@ def _extract_command_actions(cmd: click.Command) -> tuple:
 
     for param in params:
         if _is_help_param(param):
+            continue
+        if not include_hidden and getattr(param, "hidden", False):
             continue
         action_info = _extract_param_info(param)
         actions.append(action_info)
@@ -200,32 +206,36 @@ def _create_parser_info(cmd: click.Command) -> ParserInfo:
     return info
 
 
-def serialize_command(cmd: click.Command) -> ParserInfo:
+def serialize_command(cmd: click.Command, include_hidden: bool = True) -> ParserInfo:
     """Serialize a click Command to ParserInfo."""
     info = _create_parser_info(cmd)
-    actions, _, _ = _extract_command_actions(cmd)
+    actions, _, _ = _extract_command_actions(cmd, include_hidden=include_hidden)
     info.actions = actions
     return info
 
 
-def serialize_group(group: click.Group) -> ParserInfo:
+def serialize_group(group: click.Group, include_hidden: bool = True) -> ParserInfo:
     """Serialize a click Group to ParserInfo.
 
     The group's own params are serialized as regular actions.
     Subcommands are serialized as a synthetic PARSERS action.
     """
     info = _create_parser_info(group)
-    actions, _, _ = _extract_command_actions(group)
+    actions, _, _ = _extract_command_actions(group, include_hidden=include_hidden)
 
     if group.commands:
-        subparser_action = _build_subparsers_action(group)
+        subparser_action = _build_subparsers_action(
+            group, include_hidden=include_hidden
+        )
         actions.append(subparser_action)
 
     info.actions = actions
     return info
 
 
-def _build_subparsers_action(group: click.Group) -> ActionInfo:
+def _build_subparsers_action(
+    group: click.Group, include_hidden: bool = True
+) -> ActionInfo:
     """Build a synthetic PARSERS action for a Group's subcommands."""
     subparsers: Dict[str, Any] = {}
     subparsers_aliases: Dict[str, List[str]] = {}
@@ -235,6 +245,8 @@ def _build_subparsers_action(group: click.Group) -> ActionInfo:
     for name, cmd in group.commands.items():
         if cmd.name is None:
             continue
+        if not include_hidden and getattr(cmd, "hidden", False):
+            continue
         parser_id = id(cmd)
         if parser_id not in parser_to_names:
             parser_to_names[parser_id] = []
@@ -242,6 +254,8 @@ def _build_subparsers_action(group: click.Group) -> ActionInfo:
 
     for name, cmd in group.commands.items():
         if cmd.name is None:
+            continue
+        if not include_hidden and getattr(cmd, "hidden", False):
             continue
         parser_id = id(cmd)
 
@@ -251,9 +265,9 @@ def _build_subparsers_action(group: click.Group) -> ActionInfo:
         serialized_parsers[parser_id] = name
 
         if isinstance(cmd, click.Group):
-            subparsers[name] = serialize_group(cmd)
+            subparsers[name] = serialize_group(cmd, include_hidden=include_hidden)
         else:
-            subparsers[name] = serialize_command(cmd)
+            subparsers[name] = serialize_command(cmd, include_hidden=include_hidden)
 
         all_names = parser_to_names[parser_id]
         aliases = [n for n in all_names if n != name]
@@ -302,12 +316,12 @@ def _extract_help_option_names(cmd: click.Command) -> None:
         pass
 
 
-def _serialize(cmd: click.Command) -> ParserInfo:
+def _serialize(cmd: click.Command, include_hidden: bool = True) -> ParserInfo:
     """Serialize any click Command or Group."""
     _extract_help_option_names(cmd)
     if isinstance(cmd, click.Group):
-        return serialize_group(cmd)
-    return serialize_command(cmd)
+        return serialize_group(cmd, include_hidden=include_hidden)
+    return serialize_command(cmd, include_hidden=include_hidden)
 
 
 def _asdict_omit_defaults(obj: Any) -> Any:
@@ -362,17 +376,20 @@ class _Encoder(json.JSONEncoder):
         return super().default(o)
 
 
-def dump(cmd: click.Command, *, include_env: bool = True) -> Dict[str, Any]:
+def dump(
+    cmd: click.Command, *, include_env: bool = True, include_hidden: bool = True
+) -> Dict[str, Any]:
     """Serialize a click Command or Group to a dictionary.
 
     Args:
         cmd: The click Command or Group to serialize.
         include_env: Whether to include environment metadata.
+        include_hidden: Whether to include hidden options (default True).
 
     Returns:
         Dictionary representation compatible with argdump's schema.
     """
-    info = _serialize(cmd)
+    info = _serialize(cmd, include_hidden=include_hidden)
     data: Dict[str, Any] = json.loads(json.dumps(info, cls=_Encoder))
 
     result: Dict[str, Any] = {"$schema": SCHEMA_URL_V1}
@@ -384,15 +401,24 @@ def dump(cmd: click.Command, *, include_env: bool = True) -> Dict[str, Any]:
     return result
 
 
-def dumps(cmd: click.Command, *, include_env: bool = True, **json_kwargs: Any) -> str:
+def dumps(
+    cmd: click.Command,
+    *,
+    include_env: bool = True,
+    include_hidden: bool = True,
+    **json_kwargs: Any,
+) -> str:
     """Serialize a click Command or Group to a JSON string.
 
     Args:
         cmd: The click Command or Group to serialize.
         include_env: Whether to include environment metadata.
+        include_hidden: Whether to include hidden options (default True).
         **json_kwargs: Additional arguments passed to json.dumps (e.g. indent).
 
     Returns:
         JSON string representation.
     """
-    return json.dumps(dump(cmd, include_env=include_env), **json_kwargs)
+    return json.dumps(
+        dump(cmd, include_env=include_env, include_hidden=include_hidden), **json_kwargs
+    )
