@@ -85,8 +85,12 @@ def _extract_param_info(param: click.Parameter) -> ActionInfo:
 
     default = serialize_value(param.default) if param.default is not None else None
 
+    # Positional arguments (click.Argument) must have empty option_strings
+    # to match argdump's schema. Only click.Option should have real option strings.
+    option_strings = list(param.opts) if isinstance(param, click.Option) else []
+
     info = ActionInfo(
-        option_strings=list(param.opts),
+        option_strings=option_strings,
         dest=param.name or "",
         action_type=action_type,
         nargs=_classify_nargs(param, action_type),
