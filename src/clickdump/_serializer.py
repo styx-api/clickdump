@@ -398,7 +398,7 @@ class _Encoder(json.JSONEncoder):
             return o.value
         if is_dataclass(o) and not isinstance(o, type):
             return _asdict_omit_defaults(o)
-        return super().default(o)
+        return serialize_value(o)
 
 
 def _find_command_path(

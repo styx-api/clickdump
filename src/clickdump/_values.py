@@ -96,7 +96,7 @@ def _serialize_enum(value: Enum) -> Dict[str, Any]:
         "__enum__": True,
         "class": type(value).__name__,
         "module": type(value).__module__,
-        "value": value.value,
+        "value": serialize_value(value.value),
         "name": value.name,
     }
 
