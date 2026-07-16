@@ -5,6 +5,8 @@ from __future__ import annotations
 import base64
 from enum import Enum
 
+import pytest
+
 from clickdump._values import serialize_value
 
 
@@ -14,73 +16,77 @@ class Color(Enum):
 
 
 class TestPrimitives:
-    def test_none(self):
-        assert serialize_value(None) is None
-
-    def test_bool_passthrough(self):
-        assert serialize_value(True) is True
-        assert serialize_value(False) is False
-
-    def test_int_passthrough(self):
-        assert serialize_value(42) == 42
-
-    def test_float_passthrough(self):
-        assert serialize_value(3.14) == 3.14
-
-    def test_str_passthrough(self):
-        assert serialize_value("hello") == "hello"
+    @pytest.mark.parametrize("value", [None, True, False, 42, 3.14, "hello"])
+    def test_passthrough(self, value):
+        assert serialize_value(value) is value
 
 
 class TestSequence:
-    def test_list(self):
-        assert serialize_value([1, "two", 3.0]) == [1, "two", 3.0]
-
-    def test_tuple(self):
-        assert serialize_value((1, 2, 3)) == [1, 2, 3]
-
-    def test_nested_sequence(self):
-        assert serialize_value([[1], [2, 3]]) == [[1], [2, 3]]
-
-    def test_empty_list(self):
-        assert serialize_value([]) == []
+    @pytest.mark.parametrize(
+        "value, expected",
+        [
+            ([1, "two", 3.0], [1, "two", 3.0]),
+            ((1, 2, 3), [1, 2, 3]),
+            ([[1], [2, 3]], [[1], [2, 3]]),
+            ([], []),
+        ],
+    )
+    def test_sequence(self, value, expected):
+        assert serialize_value(value) == expected
 
 
 class TestDict:
-    def test_dict(self):
-        assert serialize_value({"a": 1, "b": "two"}) == {"a": 1, "b": "two"}
+    @pytest.mark.parametrize(
+        "value, expected",
+        [
+            ({"a": 1}, {"a": 1}),
+            ({"x": {"y": 1}}, {"x": {"y": 1}}),
+            ({}, {}),
+        ],
+    )
+    def test_dict(self, value, expected):
+        assert serialize_value(value) == expected
 
-    def test_dict_non_string_keys(self):
+    def test_non_string_keys(self):
         result = serialize_value({1: "a", (2, 3): "b"})
         assert result == {"1": "a", "(2, 3)": "b"}
 
-    def test_nested_dict(self):
-        assert serialize_value({"x": {"y": 1}}) == {"x": {"y": 1}}
-
-    def test_empty_dict(self):
-        assert serialize_value({}) == {}
-
 
 class TestSet:
-    def test_set(self):
-        result = serialize_value({3, 1, 2})
-        assert result == {"__set__": [1, 2, 3]}
-
-    def test_set_sorted(self):
-        result = serialize_value({"b", "a", "c"})
-        assert result == {"__set__": ["a", "b", "c"]}
-
-    def test_empty_set(self):
-        assert serialize_value(set()) == {"__set__": []}
+    @pytest.mark.parametrize(
+        "value, expected",
+        [
+            ({3, 1, 2}, [1, 2, 3]),
+            ({"b", "a", "c"}, ["a", "b", "c"]),
+            (set(), []),
+        ],
+    )
+    def test_set(self, value, expected):
+        assert serialize_value(value) == {"__set__": expected}
 
 
 class TestFrozenSet:
-    def test_frozenset(self):
-        result = serialize_value(frozenset({30, 10, 20}))
-        assert result == {"__frozenset__": [10, 20, 30]}
+    @pytest.mark.parametrize(
+        "value, expected",
+        [
+            (frozenset({30, 10, 20}), [10, 20, 30]),
+            (frozenset({"z", "a", "m"}), ["a", "m", "z"]),
+        ],
+    )
+    def test_frozenset(self, value, expected):
+        assert serialize_value(value) == {"__frozenset__": expected}
 
-    def test_frozenset_sorted(self):
-        result = serialize_value(frozenset({"z", "a", "m"}))
-        assert result == {"__frozenset__": ["a", "m", "z"]}
+
+class TestRange:
+    @pytest.mark.parametrize(
+        "value, expected",
+        [
+            (range(1, 10, 2), [1, 10, 2]),
+            (range(5), [0, 5, 1]),
+        ],
+    )
+    def test_range(self, value, expected):
+        assert serialize_value(value) == {"__range__": expected}
 
 
 class TestEnum:
@@ -101,29 +107,27 @@ class TestEnum:
 
 
 class TestBytes:
-    def test_bytes_utf8(self):
-        result = serialize_value(b"hello")
-        assert result == {"__bytes__": "hello"}
-
-    def test_bytes_non_utf8(self):
-        raw = b"\xff\xfe"
-        result = serialize_value(raw)
-        expected_b64 = base64.b64encode(raw).decode("ascii")
-        assert result == {"__bytes_b64__": expected_b64}
-
-
-class TestRange:
-    def test_range(self):
-        assert serialize_value(range(1, 10, 2)) == {"__range__": [1, 10, 2]}
-
-    def test_range_defaults(self):
-        assert serialize_value(range(5)) == {"__range__": [0, 5, 1]}
+    @pytest.mark.parametrize(
+        "value, expected",
+        [
+            (b"hello", {"__bytes__": "hello"}),
+            (
+                b"\xff\xfe",
+                {"__bytes_b64__": base64.b64encode(b"\xff\xfe").decode("ascii")},
+            ),
+        ],
+    )
+    def test_bytes(self, value, expected):
+        assert serialize_value(value) == expected
 
 
 class TestType:
     def test_type(self):
-        result = serialize_value(int)
-        assert result == {"__type__": True, "name": "int", "module": "builtins"}
+        assert serialize_value(int) == {
+            "__type__": True,
+            "name": "int",
+            "module": "builtins",
+        }
 
 
 class TestNonSerializable:
@@ -139,11 +143,9 @@ class TestCircularRef:
     def test_circular_list(self):
         a = []
         a.append(a)
-        result = serialize_value(a)
-        assert result[0] == {"__circular_ref__": True}
+        assert serialize_value(a)[0] == {"__circular_ref__": True}
 
     def test_circular_dict(self):
         a = {}
         a["self"] = a
-        result = serialize_value(a)
-        assert result["self"] == {"__circular_ref__": True}
+        assert serialize_value(a)["self"] == {"__circular_ref__": True}
