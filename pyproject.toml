@@ -1,9 +1,9 @@
 [project]
 name = "clickdump"
 version = "0.1.0"
-description = "Serialize click commands to JSON (compatible with argdump schema)"
 readme = "README.md"
 requires-python = ">=3.9"
+description = "Serialize Click CLIs to JSON"
 dependencies = [
     "click>=8.1.8",
 ]
