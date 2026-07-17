@@ -140,7 +140,8 @@ class TestCallableInfo:
 
     def test_repr_fallback(self):
         class NoName:
-            __repr__ = lambda self: "<NoName>"
+            def __repr__(self):
+                return "<NoName>"
 
         result = _type_info_from_callable(NoName())
         assert result.serializable is False
