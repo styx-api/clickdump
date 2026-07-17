@@ -25,7 +25,8 @@ source = "vcs"
 pythonpath = ["src"]
 
 [dependency-groups]
-dev = [
+test = [
     "jsonschema>=4.25.1",
     "pytest>=8.4.2",
 ]
+dev = ["pre-commit", {include-group = "test"}]
