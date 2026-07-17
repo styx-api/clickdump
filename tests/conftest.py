@@ -2,8 +2,19 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import click
 import pytest
+
+SCHEMA_PATH = Path(__file__).parent / "schema" / "schema-v1.json"
+
+
+@pytest.fixture
+def argdump_schema():
+    """Load the argdump JSON schema."""
+    return json.loads(SCHEMA_PATH.read_text())
 
 
 @pytest.fixture
@@ -32,7 +43,12 @@ def command_with_types():
     @click.option("--color", type=click.Choice(["red", "green", "blue"]))
     @click.option("--path", type=click.Path(exists=True))
     @click.option("--num", type=click.IntRange(0, 100))
-    def cli(count, pi, flag, switch, color, path, num):
+    @click.option("--uid", type=click.UUID)
+    @click.option("--since", type=click.DateTime())
+    @click.option("--ratio", type=click.FloatRange(0.0, 1.0))
+    @click.option("--point", type=(float, float))
+    @click.argument("input", type=click.File("r"))
+    def cli(count, pi, flag, switch, color, path, num, uid, since, ratio, point, input):
         """Command with types."""
 
     return cli
@@ -109,5 +125,241 @@ def nested_group():
     @click.argument("value")
     def set(value):
         """Set a config value."""
+
+    return cli
+
+
+@pytest.fixture
+def command_no_help():
+    """Command with add_help_option=False."""
+
+    @click.command(add_help_option=False)
+    def cli():
+        """No help."""
+
+    return cli
+
+
+@pytest.fixture
+def deprecated_command():
+    """Command with deprecated=True."""
+
+    @click.command(deprecated=True)
+    def cli():
+        """Deprecated command."""
+
+    return cli
+
+
+@pytest.fixture
+def invoke_without_command_group():
+    """Group with invoke_without_command=True."""
+
+    @click.group(invoke_without_command=True)
+    def cli():
+        """Group."""
+
+    @cli.command()
+    def sub():
+        """Sub."""
+
+    return cli
+
+
+@pytest.fixture
+def chain_group():
+    """Group with chain=True."""
+
+    @click.group(chain=True)
+    def cli():
+        """Chain group."""
+
+    @cli.command()
+    def step_a():
+        """Step A."""
+
+    @cli.command()
+    def step_b():
+        """Step B."""
+
+    return cli
+
+
+@pytest.fixture
+def metavar_group():
+    """Group with subcommand_metavar."""
+
+    @click.group(subcommand_metavar="COMMAND")
+    def cli():
+        """Group."""
+
+    @cli.command()
+    def sub():
+        """Sub."""
+
+    return cli
+
+
+@pytest.fixture
+def empty_group():
+    """Group with no subcommands."""
+
+    @click.group()
+    def cli():
+        """Empty group."""
+
+    return cli
+
+
+@pytest.fixture
+def command_prompt_true():
+    """Command with prompt=True."""
+
+    @click.command()
+    @click.option("--name", prompt=True)
+    def cli(name):
+        """Prompt."""
+
+    return cli
+
+
+@pytest.fixture
+def command_prompt_string():
+    """Command with prompt string."""
+
+    @click.command()
+    @click.option("--name", prompt="Enter name: ")
+    def cli(name):
+        """Prompt."""
+
+    return cli
+
+
+@pytest.fixture
+def command_show_default():
+    """Command with show_default=True."""
+
+    @click.command()
+    @click.option("--output", default="out.txt", show_default=True)
+    def cli(output):
+        """Show default."""
+
+    return cli
+
+
+@pytest.fixture
+def command_show_envvar():
+    """Command with show_envvar=True."""
+
+    @click.command()
+    @click.option("--host", envvar="HOST", show_envvar=True)
+    def cli(host):
+        """Show envvar."""
+
+    return cli
+
+
+@pytest.fixture
+def command_is_eager():
+    """Command with is_eager=True."""
+
+    @click.command()
+    @click.option("--verbose", is_eager=True)
+    def cli(verbose):
+        """Eager."""
+
+    return cli
+
+
+@pytest.fixture
+def command_expose_false():
+    """Command with expose_value=False."""
+
+    @click.command()
+    @click.option("--secret", expose_value=False)
+    def cli(secret):
+        """Hidden dest."""
+
+    return cli
+
+
+@pytest.fixture
+def command_required():
+    """Command with required=True."""
+
+    @click.command()
+    @click.option("--token", required=True)
+    def cli(token):
+        """Required."""
+
+    return cli
+
+
+@pytest.fixture
+def command_metavar():
+    """Command with metavar."""
+
+    @click.command()
+    @click.option("--config", metavar="FILE")
+    def cli(config):
+        """Metavar."""
+
+    return cli
+
+
+@pytest.fixture
+def command_envvar_list():
+    """Command with envvar list."""
+
+    @click.command()
+    @click.option("--host", envvar=["HOST", "SERVER_HOST"])
+    def cli(host):
+        """Envvar list."""
+
+    return cli
+
+
+@pytest.fixture
+def group_with_aliases():
+    """Group with aliased commands."""
+
+    build_cmd = click.Command("build", help="Build it.")
+
+    @click.group()
+    def cli():
+        """CLI."""
+
+    cli.add_command(build_cmd, "build")
+    cli.add_command(build_cmd, "compile")
+
+    return cli
+
+
+@pytest.fixture
+def group_with_hidden_subcommand():
+    """Group with a hidden subcommand."""
+
+    @click.group()
+    def cli():
+        """CLI."""
+
+    @cli.command(hidden=True)
+    def secret():
+        """Secret."""
+
+    @cli.command()
+    def visible():
+        """Visible."""
+
+    return cli
+
+
+@pytest.fixture
+def empty_command():
+    """Command with no parameters."""
+
+    @click.command()
+    def cli():
+        """Empty."""
 
     return cli

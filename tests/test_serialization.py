@@ -297,3 +297,109 @@ class TestProgramName:
         json_str = clickdump.dumps(build, parent=simple_group)
         parsed = __import__("json").loads(json_str)
         assert parsed["prog"] == "cli build"
+
+
+class TestAddHelpOption:
+    def test_add_help_false(self, command_no_help):
+        result = clickdump.dump(command_no_help)
+        assert "actions" not in result or not any(
+            a["action_type"] == "help" for a in result.get("actions", [])
+        )
+
+    def test_add_help_false_parser_info(self, command_no_help):
+        result = clickdump.dump(command_no_help)
+        assert result["add_help"] is False
+
+
+class TestCommandDeprecated:
+    def test_deprecated(self, deprecated_command):
+        result = clickdump.dump(deprecated_command)
+        assert result["deprecated"] is True
+
+
+class TestGroupFlags:
+    def test_invoke_without_command(self, invoke_without_command_group):
+        result = clickdump.dump(invoke_without_command_group)
+        assert result["invoke_without_command"] is True
+
+    def test_chain(self, chain_group):
+        result = clickdump.dump(chain_group)
+        assert result["chain"] is True
+
+    def test_subcommand_metavar(self, metavar_group):
+        result = clickdump.dump(metavar_group)
+        assert result["subcommand_metavar"] == "COMMAND"
+
+    def test_group_no_subcommands(self, empty_group):
+        result = clickdump.dump(empty_group)
+        parsers = [a for a in result["actions"] if a["action_type"] == "parsers"]
+        assert len(parsers) == 0
+
+
+class TestOptionFields:
+    def test_prompt_true(self, command_prompt_true):
+        result = clickdump.dump(command_prompt_true)
+        name_action = [a for a in result["actions"] if a["dest"] == "name"][0]
+        assert name_action["prompt"] == "Name"
+
+    def test_prompt_string(self, command_prompt_string):
+        result = clickdump.dump(command_prompt_string)
+        name_action = [a for a in result["actions"] if a["dest"] == "name"][0]
+        assert name_action["prompt"] == "Enter name: "
+
+    def test_show_default(self, command_show_default):
+        result = clickdump.dump(command_show_default)
+        output_action = [a for a in result["actions"] if a["dest"] == "output"][0]
+        assert output_action["show_default"] is True
+
+    def test_show_envvar(self, command_show_envvar):
+        result = clickdump.dump(command_show_envvar)
+        host_action = [a for a in result["actions"] if a["dest"] == "host"][0]
+        assert host_action["show_envvar"] is True
+
+    def test_is_eager(self, command_is_eager):
+        result = clickdump.dump(command_is_eager)
+        verbose_action = [a for a in result["actions"] if a["dest"] == "verbose"][0]
+        assert verbose_action["is_eager"] is True
+
+    def test_expose_value_false(self, command_expose_false):
+        result = clickdump.dump(command_expose_false)
+        secret_action = [a for a in result["actions"] if a["dest"] == "secret"][0]
+        assert secret_action["expose_value"] is False
+
+    def test_required(self, command_required):
+        result = clickdump.dump(command_required)
+        token_action = [a for a in result["actions"] if a["dest"] == "token"][0]
+        assert token_action["required"] is True
+
+    def test_metavar(self, command_metavar):
+        result = clickdump.dump(command_metavar)
+        config_action = [a for a in result["actions"] if a["dest"] == "config"][0]
+        assert config_action["metavar"] == "FILE"
+
+    def test_envvar_list(self, command_envvar_list):
+        result = clickdump.dump(command_envvar_list)
+        host_action = [a for a in result["actions"] if a["dest"] == "host"][0]
+        assert host_action["envvar"] == ["HOST", "SERVER_HOST"]
+
+
+class TestCommandAliases:
+    def test_aliases(self, group_with_aliases):
+        result = clickdump.dump(group_with_aliases)
+        parsers = [a for a in result["actions"] if a["action_type"] == "parsers"][0]
+        assert "build" in parsers["subparsers"]
+        assert "compile" not in parsers["subparsers"]
+        assert parsers["subparsers_aliases"] == {"build": ["compile"]}
+
+
+class TestHiddenSubcommand:
+    def test_hidden_subcommand_omitted(self, group_with_hidden_subcommand):
+        result = clickdump.dump(group_with_hidden_subcommand, include_hidden=False)
+        parsers = [a for a in result["actions"] if a["action_type"] == "parsers"][0]
+        assert "secret" not in parsers["subparsers"]
+        assert "visible" in parsers["subparsers"]
+
+    def test_hidden_subcommand_included_by_default(self, group_with_hidden_subcommand):
+        result = clickdump.dump(group_with_hidden_subcommand)
+        parsers = [a for a in result["actions"] if a["action_type"] == "parsers"][0]
+        assert "secret" in parsers["subparsers"]

@@ -12,6 +12,12 @@ def type_info_from_param_type(param_type: click_types.ParamType) -> tuple:
     if isinstance(param_type, click_types.StringParamType):
         return TypeInfo(name="str", module="builtins", builtin=True), None, None
 
+    if isinstance(param_type, click_types.IntRange):
+        return TypeInfo(name="int_range", module="click.types"), None, None
+
+    if isinstance(param_type, click_types.FloatRange):
+        return TypeInfo(name="float_range", module="click.types"), None, None
+
     if isinstance(param_type, click_types.IntParamType):
         return TypeInfo(name="int", module="builtins", builtin=True), None, None
 
@@ -36,12 +42,6 @@ def type_info_from_param_type(param_type: click_types.ParamType) -> tuple:
 
     if isinstance(param_type, click_types.DateTime):
         return TypeInfo(name="datetime", module="datetime"), None, None
-
-    if isinstance(param_type, click_types.IntRange):
-        return TypeInfo(name="int_range", module="click.types"), None, None
-
-    if isinstance(param_type, click_types.FloatRange):
-        return TypeInfo(name="float_range", module="click.types"), None, None
 
     if isinstance(param_type, click_types.Path):
         return TypeInfo(name="Path", module="pathlib"), None, None
