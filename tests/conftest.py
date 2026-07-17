@@ -2,8 +2,19 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import click
 import pytest
+
+SCHEMA_PATH = Path(__file__).parent / "schema" / "schema-v1.json"
+
+
+@pytest.fixture
+def argdump_schema():
+    """Load the argdump JSON schema."""
+    return json.loads(SCHEMA_PATH.read_text())
 
 
 @pytest.fixture
@@ -32,7 +43,12 @@ def command_with_types():
     @click.option("--color", type=click.Choice(["red", "green", "blue"]))
     @click.option("--path", type=click.Path(exists=True))
     @click.option("--num", type=click.IntRange(0, 100))
-    def cli(count, pi, flag, switch, color, path, num):
+    @click.option("--uid", type=click.UUID)
+    @click.option("--since", type=click.DateTime())
+    @click.option("--ratio", type=click.FloatRange(0.0, 1.0))
+    @click.option("--point", type=(float, float))
+    @click.argument("input", type=click.File("r"))
+    def cli(count, pi, flag, switch, color, path, num, uid, since, ratio, point, input):
         """Command with types."""
 
     return cli
@@ -334,5 +350,16 @@ def group_with_hidden_subcommand():
     @cli.command()
     def visible():
         """Visible."""
+
+    return cli
+
+
+@pytest.fixture
+def empty_command():
+    """Command with no parameters."""
+
+    @click.command()
+    def cli():
+        """Empty."""
 
     return cli
